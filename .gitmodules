@@ -1,0 +1,3 @@
+[submodule "src/stage"]
+	path = src/stage
+	url = git@github.com:wumch/stage.git

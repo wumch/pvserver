@@ -1,2 +1,4 @@
 
-#include "meta.hpp"
+#pragma once
+
+#include "stage/meta.hpp"

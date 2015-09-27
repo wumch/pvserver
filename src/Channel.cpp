@@ -10,7 +10,6 @@ extern "C" {
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-
 #include <sys/socket.h>
 #include <sys/epoll.h>
 }
@@ -37,7 +36,7 @@ int Channel::getIf(const std::string& name) const
     int interface = open("/dev/net/tun", O_RDWR | O_NONBLOCK);
     CS_DUMP(interface);
 
-    if (!(interface < 0))
+    if (interface >= 0)
     {
         ifreq ifr;
         std::memset(&ifr, 0, sizeof(ifr));
@@ -115,11 +114,10 @@ void Channel::handleAuthResSent(const boost::system::error_code& err, int bytesW
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
 
-    if (prepare())
+    if (prepareInterface())
     {
         CS_SAY("prepared");
-        ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
-            asio::placeholders::error, asio::placeholders::bytes_transferred));
+        continueRead();
     }
 }
 
@@ -132,14 +130,18 @@ void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead)
     CS_DUMP(int(dr.data[1]));
     CS_DUMP(int(dr.data[2]));
     CS_DUMP(int(dr.data[3]));
-    crypto.decrypt(dr.data, bytesRead, uw.data);
-    CS_DUMP(int(uw.data[0]));
-    CS_DUMP(int(uw.data[1]));
-    CS_DUMP(int(uw.data[2]));
-    CS_DUMP(int(uw.data[3]));
-    asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(bytesRead),
-        boost::bind(&Channel::handleUsWritten, shared_from_this(),
-            asio::placeholders::error, asio::placeholders::bytes_transferred));
+    if (dr.data[0] != 0)
+    {
+        crypto.decrypt(dr.data, bytesRead, uw.data);
+        CS_DUMP(int(uw.data[0]));
+        CS_DUMP(int(uw.data[1]));
+        CS_DUMP(int(uw.data[2]));
+        CS_DUMP(int(uw.data[3]));
+        asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(bytesRead),
+            boost::bind(&Channel::handleUsWritten, shared_from_this(),
+                asio::placeholders::error, asio::placeholders::bytes_transferred));
+    }
+    continueRead();
 }
 
 void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
@@ -151,6 +153,7 @@ void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
     asio::async_write(ds, __PECAR_BUFFER(dw), asio::transfer_exactly(bytesRead),
         boost::bind(&Channel::handleDsWritten, shared_from_this(),
             asio::placeholders::error, asio::placeholders::bytes_transferred));
+    continueRead();
 }
 
 void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWritten)
@@ -158,8 +161,7 @@ void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWri
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
 
-    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
-        asio::placeholders::error, asio::placeholders::bytes_transferred));
+    continueRead();
 }
 
 void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWritten)
@@ -167,6 +169,14 @@ void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWri
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
 
+    continueRead();
+    CS_SAY("waiting for upstream readable");
+}
+
+void Channel::continueRead()
+{
+    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
+        asio::placeholders::error, asio::placeholders::bytes_transferred));
     us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
         asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
@@ -179,14 +189,13 @@ void Channel::prepareBuffers()
     uw.setCapacity(authority.uwBufSize);
 }
 
-bool Channel::prepare()
+bool Channel::prepareInterface()
 {
     CS_SAY("will get interface");
     ifd = getIf(authority.ifname);
     CS_DUMP(ifd);
     if (!(ifd < 0))
     {
-//        us = asio::posix::stream_descriptor(ioService, ::dup(ifd));
         us.assign(ifd);
         return true;
     }
@@ -218,39 +227,6 @@ void Channel::shutdown()
         ds.close(err);
     }
 }
-
-/*
-void Channel::epoll()
-{
-    int i, maxi, listenfd, connfd, sockfd,epfd,nfds;
-    struct epoll_event ev, events[20];
-    epfd = epoll_create(256);
-    ev.data.fd = ifd;
-    ev.events = EPOLLIN | EPOLLET;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, ifd, &ev);
-    nfds = epoll_wait(epfd, events, 20, -1);
-    CS_DUMP(nfds);
-    for (i = 0; i < nfds; ++i)
-    {
-        if (events[i].events & EPOLLIN)
-        {
-            int bytesRead = read(events[i].data.fd, ur.data, ur.capacity);
-            if (bytesRead > 0)
-            {
-
-            }
-            else if (bytesRead == 0)
-            {
-
-            }
-            else if (bytesRead == -1)
-            {
-
-            }
-        }
-    }
-}
-*/
 
 }
 

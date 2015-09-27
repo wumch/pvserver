@@ -81,7 +81,7 @@ private:
 
     void prepareBuffers();
 
-    bool prepare();
+    bool prepareInterface();
 
     void handleFatalError(const boost::system::error_code& err, int bytesWritten);
 
@@ -92,6 +92,8 @@ private:
     void handleUsRead(const boost::system::error_code& err, int bytesRead);
 
     void handleUsWritten(const boost::system::error_code& err, int bytesWritten);
+
+    void continueRead();
 
 //    void epoll();
 };

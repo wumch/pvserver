@@ -93,8 +93,6 @@ private:
 
     void handleUsWritten(const boost::system::error_code& err, int bytesWritten);
 
-    void continueRead();
-
 //    void epoll();
 };
 

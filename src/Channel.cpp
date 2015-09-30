@@ -40,11 +40,11 @@ int Channel::getIf(const std::string& name) const
     {
         ifreq ifr;
         std::memset(&ifr, 0, sizeof(ifr));
-        ifr.ifr_flags = IFF_TUN;
+        ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
         std::memcpy(ifr.ifr_name, name.data(), std::min(name.size(), sizeof(ifr.ifr_name)));
         CS_DUMP(std::string(name.data(), 0, std::min(name.size(), sizeof(ifr.ifr_name))));
 
-        if (ioctl(interface, TUNSETIFF, &ifr)) {
+        if (ioctl(interface, TUNSETIFF, &ifr) < 0) {
             CS_DIE("Cannot get TUN interface");
         }
     }
@@ -117,31 +117,37 @@ void Channel::handleAuthResSent(const boost::system::error_code& err, int bytesW
     if (prepareInterface())
     {
         CS_SAY("prepared");
-        continueRead();
+        ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
+            asio::placeholders::error, asio::placeholders::bytes_transferred));
+        us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
+            asio::placeholders::error, asio::placeholders::bytes_transferred));
     }
 }
 
 void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead)
 {
     CS_DUMP(bytesRead);
-    __PECAR_KICK_IF_ERR(err);
-
-    CS_DUMP(int(dr.data[0]));
-    CS_DUMP(int(dr.data[1]));
-    CS_DUMP(int(dr.data[2]));
-    CS_DUMP(int(dr.data[3]));
-    if (dr.data[0] != 0)
+    if (CS_BLIKELY(!err))
     {
         crypto.decrypt(dr.data, bytesRead, uw.data);
-        CS_DUMP(int(uw.data[0]));
-        CS_DUMP(int(uw.data[1]));
-        CS_DUMP(int(uw.data[2]));
-        CS_DUMP(int(uw.data[3]));
         asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(bytesRead),
             boost::bind(&Channel::handleUsWritten, shared_from_this(),
                 asio::placeholders::error, asio::placeholders::bytes_transferred));
     }
-    continueRead();
+    else
+    {
+        if (err.value() == asio::error::eof)
+        {
+            CS_SAY("downstream eof");
+        }
+        else
+        {
+            CS_SAY("[" << err.message() << "], shuntdown");
+            return shutdown();
+        }
+    }
+    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
+        asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
 
 void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
@@ -153,32 +159,30 @@ void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
     asio::async_write(ds, __PECAR_BUFFER(dw), asio::transfer_exactly(bytesRead),
         boost::bind(&Channel::handleDsWritten, shared_from_this(),
             asio::placeholders::error, asio::placeholders::bytes_transferred));
-    continueRead();
+// 2
+    us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
+        asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
 
 void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWritten)
 {
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
+    CS_SAY("waiting for downstream readable");
 
-    continueRead();
+// 1
+//    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
+//        asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
 
 void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWritten)
 {
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
-
-    continueRead();
     CS_SAY("waiting for upstream readable");
-}
-
-void Channel::continueRead()
-{
-    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
-        asio::placeholders::error, asio::placeholders::bytes_transferred));
-    us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
-        asio::placeholders::error, asio::placeholders::bytes_transferred));
+// 2
+//    us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
+//        asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
 
 void Channel::prepareBuffers()

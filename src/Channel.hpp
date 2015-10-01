@@ -10,6 +10,7 @@
 #include <boost/bind.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/asio/posix/stream_descriptor_service.hpp>
+#include <boost/static_assert.hpp>
 #include "Config.hpp"
 #include "Crypto.hpp"
 #include "Buffer.hpp"
@@ -28,6 +29,8 @@ class Channel:
 {
 private:
     enum { invalid_fd = -1 };
+    enum { ip_pack_min_len = 20, ip_pack_max_len = 65535 };
+    BOOST_STATIC_ASSERT(ip_pack_min_len >= 4);
 
     const Config* const config;
     asio::io_service& ioService;
@@ -85,7 +88,7 @@ private:
 
     void handleFatalError(const boost::system::error_code& err, int bytesWritten);
 
-    void handleDsRead(const boost::system::error_code& err, int bytesRead);
+    void handleDsRead(const boost::system::error_code& err, int bytesRead, int bytesRemain);
 
     void handleDsWritten(const boost::system::error_code& err, int bytesWritten);
 
@@ -93,7 +96,13 @@ private:
 
     void handleUsWritten(const boost::system::error_code& err, int bytesWritten);
 
-//    void epoll();
+    int usWritePack(const char* begin, int bytesRemain);
+
+    void continueReadDs(const char* offset, int bytesRemain);
+
+    uint16_t readNetUint16(const char* data) const;
+
+    uint16_t readNetUint16(const uint8_t* data) const;
 };
 
 }

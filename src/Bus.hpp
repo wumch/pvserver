@@ -2,6 +2,7 @@
 #pragma once
 
 #include "predef.hpp"
+#include <sys/socket.h>
 #include <string>
 #include <boost/noncopyable.hpp>
 #include <boost/shared_ptr.hpp>
@@ -26,11 +27,20 @@ public:
     Bus():
         config(Config::instance()),
         ioService(config->ioServiceNum),
-        acceptor(ioService, tcp::endpoint(config->host, config->port))
+//        acceptor(ioService, tcp::endpoint(config->host, config->port))
+        acceptor(ioService, tcp::endpoint(tcp::v6(), config->port))
     {}
 
     int run()
     {
+        int flag = 1;
+        setsockopt(acceptor.native(), SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+        flag = 0;
+        setsockopt(acceptor.native(), IPPROTO_IPV6, IPV6_V6ONLY, &flag, sizeof(flag));
+//        sockaddr_in6 addr;
+//        memset(&addr, 0, sizeof(addr));
+//        addr.sin6_family = AF_INET6;
+//        addr.sin6_port = htons(config->port);
         startAccept();
         return runForEver();
     }

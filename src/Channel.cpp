@@ -10,8 +10,6 @@ extern "C" {
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
 }
 #include <cstring>
 #include <cerrno>
@@ -29,29 +27,6 @@ extern "C" {
 
 namespace pecar
 {
-
-int Channel::getIf(const std::string& name) const
-{
-    CS_SAY("will open tun device");
-    int interface = open("/dev/net/tun", O_RDWR | O_NONBLOCK);
-    CS_DUMP(interface);
-
-    if (interface >= 0)
-    {
-        ifreq ifr;
-        std::memset(&ifr, 0, sizeof(ifr));
-        ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-        std::memcpy(ifr.ifr_name, name.data(), std::min(name.size(), sizeof(ifr.ifr_name)));
-        CS_DUMP(std::string(name.data(), 0, std::min(name.size(), sizeof(ifr.ifr_name))));
-
-        if (ioctl(interface, TUNSETIFF, &ifr) < 0) {
-            CS_DIE("Cannot get TUN interface");
-        }
-    }
-    CS_SAY("done");
-
-    return interface;
-}
 
 void Channel::handshake()
 {
@@ -118,36 +93,108 @@ void Channel::handleAuthResSent(const boost::system::error_code& err, int bytesW
     {
         CS_SAY("prepared");
         ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
-            asio::placeholders::error, asio::placeholders::bytes_transferred));
+            asio::placeholders::error, asio::placeholders::bytes_transferred, 0));
         us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
             asio::placeholders::error, asio::placeholders::bytes_transferred));
     }
 }
 
-void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead)
+void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead, int bytesLeft)
 {
     CS_DUMP(bytesRead);
-    if (CS_BLIKELY(!err))
+    CS_DUMP(bytesLeft);
+    __PECAR_KICK_IF_ERR(err);
+
+    const int totalBytes = bytesLeft + bytesRead;
+    if (CS_BLIKELY(totalBytes >= 4))
     {
-        crypto.decrypt(dr.data, bytesRead, uw.data);
-        asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(bytesRead),
-            boost::bind(&Channel::handleUsWritten, shared_from_this(),
-                asio::placeholders::error, asio::placeholders::bytes_transferred));
-    }
-    else
-    {
-        if (err.value() == asio::error::eof)
+        crypto.decrypt(dr.data, bytesRead, uw.data + bytesLeft);
+        const int packLen = readNetUint16(uw.data + 2);
+        CS_DUMP(packLen);
+        __PECAR_KICK_IF(CS_BUNLIKELY(packLen < 20));
+
+        if (packLen == totalBytes)
         {
-            CS_SAY("downstream eof");
+            asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(packLen),
+                boost::bind(&Channel::handleUsWritten, shared_from_this(),
+                    asio::placeholders::error, asio::placeholders::bytes_transferred));
+
+            ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
+                asio::placeholders::error, asio::placeholders::bytes_transferred, 0));
+        }
+        else if (packLen < totalBytes)
+        {
+            int bytesRemain = totalBytes;
+            const char* packBegin = uw.data;
+            int bytesWritten;
+            while (bytesRemain > ip_pack_min_len && (bytesWritten = usWritePack(packBegin, bytesRemain)) > 0)
+            {
+                bytesRemain -= bytesWritten;
+                packBegin += bytesWritten;
+            }
+            CS_DUMP(bytesRemain);
+            if (bytesRemain > 0)
+            {
+                continueReadDs(packBegin, bytesRemain);
+            }
+            else
+            {
+                ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
+                    asio::placeholders::error, asio::placeholders::bytes_transferred, bytesRemain));
+            }
         }
         else
         {
-            CS_SAY("[" << err.message() << "], shuntdown");
-            return shutdown();
+            continueReadDs(uw.data, totalBytes);
         }
     }
-    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
-        asio::placeholders::error, asio::placeholders::bytes_transferred));
+    else
+    {
+        continueReadDs(uw.data, totalBytes);
+    }
+}
+
+void Channel::continueReadDs(const char* offset, int bytesRemain)
+{
+    if (offset != uw.data && bytesRemain > 0)
+    {
+        const int space = offset - uw.data;
+        if (bytesRemain < space)
+        {
+            std::memcpy(uw.data, offset, bytesRemain);
+        }
+        else
+        {
+            const char* src = offset;
+            char* dest = uw.data;
+            for (int remains = bytesRemain;
+                remains > 0;
+                remains -= space, src += space, dest += space)
+            {
+                std::memcpy(dest, src, std::min(space, remains));
+            }
+        }
+    }
+    ds.async_read_some(asio::buffer(dr.data, dr.capacity - bytesRemain),
+        boost::bind(&Channel::handleDsRead, shared_from_this(),
+            asio::placeholders::error, asio::placeholders::bytes_transferred, bytesRemain));
+}
+
+int Channel::usWritePack(const char* begin, int bytesRemain)
+{
+    int packLen = readNetUint16(begin + 2);
+    CS_SAY("usWritePack( uw.data + " << (begin - uw.data) << ", " << bytesRemain << " ), pack-len: " << packLen);
+    if (bytesRemain < packLen)
+    {
+        return -1;
+    }
+    else
+    {
+        asio::async_write(us, asio::buffer(begin, packLen), asio::transfer_exactly(packLen),
+            boost::bind(&Channel::handleUsWritten, shared_from_this(),
+                asio::placeholders::error, asio::placeholders::bytes_transferred));
+        return packLen;
+    }
 }
 
 void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
@@ -159,7 +206,7 @@ void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
     asio::async_write(ds, __PECAR_BUFFER(dw), asio::transfer_exactly(bytesRead),
         boost::bind(&Channel::handleDsWritten, shared_from_this(),
             asio::placeholders::error, asio::placeholders::bytes_transferred));
-// 2
+
     us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
         asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
@@ -168,21 +215,12 @@ void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWri
 {
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
-    CS_SAY("waiting for downstream readable");
-
-// 1
-//    ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
-//        asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
 
 void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWritten)
 {
     CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
-    CS_SAY("waiting for upstream readable");
-// 2
-//    us.async_read_some(__PECAR_BUFFER(ur), boost::bind(&Channel::handleUsRead, shared_from_this(),
-//        asio::placeholders::error, asio::placeholders::bytes_transferred));
 }
 
 void Channel::prepareBuffers()
@@ -191,19 +229,6 @@ void Channel::prepareBuffers()
     dw.setCapacity(authority.dwBufSize);
     ur.setCapacity(authority.urBufSize);
     uw.setCapacity(authority.uwBufSize);
-}
-
-bool Channel::prepareInterface()
-{
-    CS_SAY("will get interface");
-    ifd = getIf(authority.ifname);
-    CS_DUMP(ifd);
-    if (!(ifd < 0))
-    {
-        us.assign(ifd);
-        return true;
-    }
-    return false;
 }
 
 void Channel::handleFatalError(const boost::system::error_code& err, int bytesWritten)
@@ -230,6 +255,52 @@ void Channel::shutdown()
         ds.shutdown(tcp::socket::shutdown_both, err);
         ds.close(err);
     }
+}
+
+bool Channel::prepareInterface()
+{
+    CS_SAY("will get interface");
+    ifd = getIf(authority.ifname);
+    CS_DUMP(ifd);
+    if (!(ifd < 0))
+    {
+        us.assign(ifd);
+        return true;
+    }
+    return false;
+}
+
+int Channel::getIf(const std::string& name) const
+{
+    CS_SAY("will open tun device");
+    int interface = open("/dev/net/tun", O_RDWR | O_NONBLOCK);
+    CS_DUMP(interface);
+
+    if (interface >= 0)
+    {
+        ifreq ifr;
+        std::memset(&ifr, 0, sizeof(ifr));
+        ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+        std::memcpy(ifr.ifr_name, name.data(), std::min(name.size(), sizeof(ifr.ifr_name)));
+        CS_DUMP(std::string(name.data(), 0, std::min(name.size(), sizeof(ifr.ifr_name))));
+
+        if (ioctl(interface, TUNSETIFF, &ifr) < 0) {
+            CS_DIE("Cannot get TUN interface");
+        }
+    }
+    CS_SAY("done");
+
+    return interface;
+}
+
+uint16_t Channel::readNetUint16(const char* data) const
+{
+    return readNetUint16(reinterpret_cast<const uint8_t*>(data));
+}
+
+uint16_t Channel::readNetUint16(const uint8_t* data) const
+{
+    return (*data << 8) + *(data + 1);
 }
 
 }

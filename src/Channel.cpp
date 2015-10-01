@@ -111,7 +111,7 @@ void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead, 
         crypto.decrypt(dr.data, bytesRead, uw.data + bytesLeft);
         const int packLen = readNetUint16(uw.data + 2);
         CS_DUMP(packLen);
-        __PECAR_KICK_IF(CS_BUNLIKELY(packLen < 20));
+        __PECAR_KICK_IF(packLen < 20);
 
         if (packLen == totalBytes)
         {
@@ -133,14 +133,14 @@ void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead, 
                 packBegin += bytesWritten;
             }
             CS_DUMP(bytesRemain);
-            if (bytesRemain > 0)
-            {
-                continueReadDs(packBegin, bytesRemain);
-            }
-            else
+            if (bytesRemain == 0)
             {
                 ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
                     asio::placeholders::error, asio::placeholders::bytes_transferred, bytesRemain));
+            }
+            else
+            {
+                continueReadDs(packBegin, bytesRemain);
             }
         }
         else
@@ -165,13 +165,21 @@ void Channel::continueReadDs(const char* offset, int bytesRemain)
         }
         else
         {
-            const char* src = offset;
-            char* dest = uw.data;
-            for (int remains = bytesRemain;
-                remains > 0;
-                remains -= space, src += space, dest += space)
+            if ((space << 3) < bytesRemain && space < 256)
             {
-                std::memcpy(dest, src, std::min(space, remains));
+                std::memcpy(dr.data, offset, bytesRemain);
+                std::memcpy(uw.data, dr.data, bytesRemain);
+            }
+            else
+            {
+                const char* src = offset;
+                char* dest = uw.data;
+                for (int remains = bytesRemain;
+                    remains > 0;
+                    remains -= space, src += space, dest += space)
+                {
+                    std::memcpy(dest, src, std::min(space, remains));
+                }
             }
         }
     }

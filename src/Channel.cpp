@@ -14,6 +14,7 @@ extern "C" {
 #include <cstring>
 #include <cerrno>
 #include <algorithm>
+#include <fstream>
 #include <crypto++/aes.h>
 #include "Aside.hpp"
 
@@ -86,7 +87,7 @@ void Channel::handleUserPass(const boost::system::error_code& err, int bytesRead
 
 void Channel::handleAuthResSent(const boost::system::error_code& err, int bytesWritten)
 {
-    CS_DUMP(bytesWritten);
+//    CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
 
     if (prepareInterface())
@@ -101,8 +102,8 @@ void Channel::handleAuthResSent(const boost::system::error_code& err, int bytesW
 
 void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead, int bytesLeft)
 {
-    CS_DUMP(bytesRead);
-    CS_DUMP(bytesLeft);
+//    CS_DUMP(bytesRead);
+//    CS_DUMP(bytesLeft);
     __PECAR_KICK_IF_ERR(err);
 
     const int totalBytes = bytesLeft + bytesRead;
@@ -110,11 +111,15 @@ void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead, 
     {
         crypto.decrypt(dr.data, bytesRead, uw.data + bytesLeft);
         const int packLen = readNetUint16(uw.data + 2);
-        CS_DUMP(packLen);
+//        CS_DUMP(packLen);
         __PECAR_KICK_IF(packLen < 20);
 
         if (packLen == totalBytes)
         {
+            if (*uw.data != 69)
+            {
+                CS_ERR("usWritePack( uw.data, " << totalBytes << " ), pack-len: " << packLen << ", first byte: " << (int)*uw.data);
+            }
             asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(packLen),
                 boost::bind(&Channel::handleUsWritten, shared_from_this(),
                     asio::placeholders::error, asio::placeholders::bytes_transferred));
@@ -132,7 +137,7 @@ void Channel::handleDsRead(const boost::system::error_code& err, int bytesRead, 
                 bytesRemain -= bytesWritten;
                 packBegin += bytesWritten;
             }
-            CS_DUMP(bytesRemain);
+//            CS_DUMP(bytesRemain);
             if (bytesRemain == 0)
             {
                 ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
@@ -191,7 +196,14 @@ void Channel::continueReadDs(const char* offset, int bytesRemain)
 int Channel::usWritePack(const char* begin, int bytesRemain)
 {
     int packLen = readNetUint16(begin + 2);
-    CS_SAY("usWritePack( uw.data + " << (begin - uw.data) << ", " << bytesRemain << " ), pack-len: " << packLen);
+    if (*begin == 69)
+    {
+        CS_SAY("usWritePack( uw.data + " << (begin - uw.data) << ", " << bytesRemain << " ), pack-len: " << packLen);
+    }
+    else
+    {
+        CS_ERR("usWritePack( uw.data + " << (begin - uw.data) << ", " << bytesRemain << " ), pack-len: " << packLen << ", first byte: " << (int)*begin);
+    }
     if (bytesRemain < packLen)
     {
         return -1;
@@ -207,10 +219,11 @@ int Channel::usWritePack(const char* begin, int bytesRemain)
 
 void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
 {
-    CS_DUMP(bytesRead);
+//    CS_DUMP(bytesRead);
     __PECAR_KICK_IF_ERR(err);
 
     crypto.encrypt(ur.data, bytesRead, dw.data);
+    dumpData(dw.data, bytesRead);
     asio::async_write(ds, __PECAR_BUFFER(dw), asio::transfer_exactly(bytesRead),
         boost::bind(&Channel::handleDsWritten, shared_from_this(),
             asio::placeholders::error, asio::placeholders::bytes_transferred));
@@ -221,13 +234,23 @@ void Channel::handleUsRead(const boost::system::error_code& err, int bytesRead)
 
 void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWritten)
 {
-    CS_DUMP(bytesWritten);
+//    CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
+}
+
+void Channel::dumpData(const char* data, int len)
+{
+    static std::ofstream of("/dev/shm/pecar-server.dat", std::fstream::out);
+    for (int i = 0; i < len; ++i)
+    {
+        of << (int)data[i] << ",";
+    }
+    of << std::endl;
 }
 
 void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWritten)
 {
-    CS_DUMP(bytesWritten);
+//    CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
 }
 

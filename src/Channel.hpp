@@ -103,6 +103,8 @@ private:
     uint16_t readNetUint16(const char* data) const;
 
     uint16_t readNetUint16(const uint8_t* data) const;
+
+    void dumpData(const char* data, int len);
 };
 
 }

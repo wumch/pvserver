@@ -32,8 +32,8 @@ public:
     {
         if (CS_LIKELY(len))
         {
-            std::memcpy(out, in, len);
-//            encor.ProcessData(out, in, len);
+//            std::memcpy(out, in, len);
+            encor.ProcessData(out, in, len);
         }
     }
 
@@ -51,8 +51,8 @@ public:
     {
         if (CS_LIKELY(len))
         {
-            std::memcpy(out, in, len);
-//            decor.ProcessData(out, in, len);
+//            std::memcpy(out, in, len);
+            decor.ProcessData(out, in, len);
         }
     }
 

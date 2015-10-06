@@ -224,7 +224,6 @@ void Channel::handleUsRead(int bytesRead)
     }
 
     crypto.encrypt(ur.data, bytesRead, dw.data);
-    dumpData(dw.data, bytesRead);
     ++dwPending;
     asio::async_write(ds, __PECAR_BUFFER(dw), asio::transfer_exactly(bytesRead),
         boost::bind(&Channel::handleDsWritten, shared_from_this(),
@@ -238,16 +237,6 @@ void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWri
 {
     __PECAR_KICK_IF_ERR(err);
     --dwPending;
-}
-
-void Channel::dumpData(const char* data, int len)
-{
-    static std::ofstream of("/dev/shm/pecar-server.dat", std::fstream::out);
-    for (int i = 0; i < len; ++i)
-    {
-        of << (int)data[i] << ",";
-    }
-    of << std::endl;
 }
 
 void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWritten)

@@ -65,6 +65,8 @@ public:
     Timeval dsRecvTimeout, dsSendTimeout,
         usRecvTimeout, usSendTimeout;
 
+    int uwPendingInterval, dwPendingInterval;
+
     std::size_t initBufferSize;
     std::size_t userPassTotalLen;
 

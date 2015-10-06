@@ -43,6 +43,9 @@ private:
     Crypto crypto;
     Authority authority;
 
+    int dwPending, uwPending;
+    asio::deadline_timer dwTimer, uwTimer;
+
 public:
     explicit Channel(asio::io_service& _ioService):
         config(Config::instance()),
@@ -50,7 +53,10 @@ public:
         ifd(invalid_fd),
         ds(ioService),
         us(ioService),
-        dr(config->initBufferSize)
+        dr(config->initBufferSize),
+        dwPending(0), uwPending(0),
+        dwTimer(ioService, boost::posix_time::milliseconds(config->dwPendingInterval)),
+        uwTimer(ioService, boost::posix_time::milliseconds(config->uwPendingInterval))
     {}
 
     void start()
@@ -89,10 +95,12 @@ private:
     void handleFatalError(const boost::system::error_code& err, int bytesWritten);
 
     void handleDsRead(const boost::system::error_code& err, int bytesRead, int bytesRemain);
+    void handleDsRead(int bytesRead, int bytesRemain);
 
     void handleDsWritten(const boost::system::error_code& err, int bytesWritten);
 
     void handleUsRead(const boost::system::error_code& err, int bytesRead);
+    void handleUsRead(int bytesRead);
 
     void handleUsWritten(const boost::system::error_code& err, int bytesWritten);
 

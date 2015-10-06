@@ -121,6 +121,12 @@ void Config::initDesc()
         ("upstream-linger-timeout", boost::program_options::value<int>()->default_value(0),
             "socket linger timeout for upstream (second), default 3.")
 
+        ("downstream-write-pending-interval", boost::program_options::value<int>()->default_value(5),
+            "checking interval while downstream write pending (millisecond), default 5.")
+
+        ("upstream-write-pending-interval", boost::program_options::value<int>()->default_value(5),
+            "checking interval while upstream write pending (millisecond), default 5.")
+
         ("username-password-total-max-len", boost::program_options::value<std::size_t>()->default_value(254),
             "max length of username and password, default 254.")
     ;
@@ -165,6 +171,9 @@ void Config::load(boost::filesystem::path file)
     dsLingerTimeout = options["downstream-linger-timeout"].as<int>();
     usLinger = options["upstream-linger"].as<bool>();
     usLingerTimeout = options["upstream-linger-timeout"].as<int>();
+
+    dwPendingInterval = options["downstream-write-pending-interval"].as<int>();
+    uwPendingInterval = options["upstream-write-pending-interval"].as<int>();
 
     userPassTotalLen = options["username-password-total-max-len"].as<std::size_t>();
 

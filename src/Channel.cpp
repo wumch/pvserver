@@ -48,7 +48,6 @@ void Channel::handleUserPassLen(const boost::system::error_code& err, int bytesR
     crypto.setEncKeyWithIv(ptr, CryptoPP::AES::DEFAULT_KEYLENGTH,
         ptr + CryptoPP::AES::DEFAULT_KEYLENGTH, CryptoPP::AES::BLOCKSIZE);
     uint8_t userPassLen[2];
-    dumpBytes(ptr + CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE, 2, "user/pass len");
     crypto.decrypt(ptr + CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE, 2, userPassLen);
 
     const int totalLen = userPassLen[0] + userPassLen[1];

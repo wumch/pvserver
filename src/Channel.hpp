@@ -29,7 +29,11 @@ class Channel:
 {
 private:
     enum { invalid_fd = -1 };
-    enum { ip_pack_min_len = 20, ip_pack_max_len = 65535 };
+    enum {
+        ip_pack_len_end = 4,
+        ip_pack_min_len = 20,
+        ip_pack_max_len = 65535
+    };
     BOOST_STATIC_ASSERT(ip_pack_min_len >= 4);
 
     const Config* const config;
@@ -112,7 +116,15 @@ private:
 
     uint16_t readNetUint16(const uint8_t* data) const;
 
-    void dumpData(const char* data, int len);
+    void dumpBytes(const char* data, int len, const std::string& name)
+    {
+        CS_SAY(name);
+        for (int i = 0; i < len; ++i)
+        {
+            std::cout << (int)data[i] << ',';
+        }
+        std::cout << std::endl;
+    }
 };
 
 }

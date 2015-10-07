@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstring>
+#include <iostream>
 #include <boost/static_assert.hpp>
 #include <crypto++/modes.h>
 #include <crypto++/aes.h>
@@ -12,6 +13,7 @@ class Crypto
 {
 private:
     BOOST_STATIC_ASSERT(sizeof(byte) == 1);     // 以下不再考虑 sizeof(byte) != 1 的情况。
+    BOOST_STATIC_ASSERT(sizeof(char) == 1);     // 以下不再考虑 sizeof(char) != 1 的情况。
 
     CryptoPP::CFB_Mode<CryptoPP::AES>::Encryption encor;
     CryptoPP::CFB_Mode<CryptoPP::AES>::Decryption decor;
@@ -32,7 +34,6 @@ public:
     {
         if (CS_LIKELY(len))
         {
-//            std::memcpy(out, in, len);
             encor.ProcessData(out, in, len);
         }
     }
@@ -51,7 +52,6 @@ public:
     {
         if (CS_LIKELY(len))
         {
-//            std::memcpy(out, in, len);
             decor.ProcessData(out, in, len);
         }
     }
@@ -66,6 +66,8 @@ public:
     void setEncKeyWithIv(const byte* _key, std::size_t keyLen,
         const byte* _iv, std::size_t ivLen)
     {
+        dumpBytes(_key, keyLen, "enc key");
+        dumpBytes(_iv, ivLen, "enc iv");
         encor.SetKeyWithIV(_key, keyLen, _iv, ivLen);
     }
 
@@ -79,7 +81,20 @@ public:
     void setDecKeyWithIv(const byte* _key, std::size_t keyLen,
         const byte* _iv, std::size_t ivLen)
     {
+        dumpBytes(_key, keyLen, "dec key");
+        dumpBytes(_iv, ivLen, "dec iv");
         decor.SetKeyWithIV(_key, keyLen, _iv, ivLen);
+    }
+
+    void dumpBytes(const byte* _data, int len, const std::string& name)
+    {
+        const char* data = reinterpret_cast<const char*>(_data);
+        CS_SAY(name);
+        for (int i = 0; i < len; ++i)
+        {
+            std::cout << (int)data[i] << ',';
+        }
+        std::cout << std::endl;
     }
 };
 

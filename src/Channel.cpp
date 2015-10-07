@@ -39,16 +39,16 @@ void Channel::handshake()
 
 void Channel::handleUserPassLen(const boost::system::error_code& err, int bytesRead)
 {
-    CS_DUMP(bytesRead);
     __PECAR_KICK_IF_ERR(err);
 
     const char* ptr = dr.data;
-    crypto.setEncKeyWithIv(ptr, CryptoPP::AES::DEFAULT_KEYLENGTH,
-        ptr + CryptoPP::AES::DEFAULT_KEYLENGTH, CryptoPP::AES::BLOCKSIZE);
-    ptr += CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE;
     crypto.setDecKeyWithIv(ptr, CryptoPP::AES::DEFAULT_KEYLENGTH,
         ptr + CryptoPP::AES::DEFAULT_KEYLENGTH, CryptoPP::AES::BLOCKSIZE);
+    ptr += CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE;
+    crypto.setEncKeyWithIv(ptr, CryptoPP::AES::DEFAULT_KEYLENGTH,
+        ptr + CryptoPP::AES::DEFAULT_KEYLENGTH, CryptoPP::AES::BLOCKSIZE);
     uint8_t userPassLen[2];
+    dumpBytes(ptr + CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE, 2, "user/pass len");
     crypto.decrypt(ptr + CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE, 2, userPassLen);
 
     const int totalLen = userPassLen[0] + userPassLen[1];
@@ -65,7 +65,10 @@ void Channel::handleUserPass(const boost::system::error_code& err, int bytesRead
 {
     __PECAR_KICK_IF_ERR(err);
 
-    uint8_t res = Aside::instance()->auth(std::string(dr.data, userLen), std::string(dr.data + userLen, passLen), authority);
+    crypto.decrypt(dr.data, bytesRead, dr.data + config->userPassTotalLen);
+    uint8_t res = Aside::instance()->auth(
+        std::string(dr.data + config->userPassTotalLen, userLen),
+        std::string(dr.data + config->userPassTotalLen + userLen, passLen), authority);
     if (res == Authenticater::CODE_OK)
     {
         CS_SAY("authed");
@@ -112,28 +115,28 @@ void Channel::handleDsRead(int bytesRead, int bytesLeft)
         return uwTimer.async_wait(boost::bind(&Channel::handleDsRead, shared_from_this(), bytesRead, bytesLeft));
     }
 
+    crypto.decrypt(dr.data, bytesRead, uw.data + bytesLeft);
     const int totalBytes = bytesLeft + bytesRead;
-    if (CS_BLIKELY(totalBytes >= 4))
+    if (CS_BLIKELY(totalBytes >= ip_pack_len_end))
     {
-        crypto.decrypt(dr.data, bytesRead, uw.data + bytesLeft);
-        const int packLen = readNetUint16(uw.data + 2);
-        __PECAR_KICK_IF(packLen < 20);
+        const int firstPackLen = readNetUint16(uw.data + 2);
+        __PECAR_KICK_IF(firstPackLen < ip_pack_min_len);
 
-        if (packLen == totalBytes)
+        if (firstPackLen == totalBytes)
         {
             ++uwPending;
-            asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(packLen),
+            asio::async_write(us, __PECAR_BUFFER(uw), asio::transfer_exactly(firstPackLen),
                 boost::bind(&Channel::handleUsWritten, shared_from_this(),
                     asio::placeholders::error, asio::placeholders::bytes_transferred));
             ds.async_read_some(__PECAR_BUFFER(dr), boost::bind(&Channel::handleDsRead, shared_from_this(),
                 asio::placeholders::error, asio::placeholders::bytes_transferred, 0));
         }
-        else if (packLen < totalBytes)
+        else if (firstPackLen < totalBytes)
         {
             int bytesRemain = totalBytes;
             const char* packBegin = uw.data;
             int bytesWritten;
-            while (bytesRemain > ip_pack_min_len && (bytesWritten = usWritePack(packBegin, bytesRemain)) > 0)
+            while (bytesRemain >= ip_pack_min_len && (bytesWritten = usWritePack(packBegin, bytesRemain)) > 0)
             {
                 bytesRemain -= bytesWritten;
                 packBegin += bytesWritten;
@@ -317,6 +320,7 @@ int Channel::getIf(const std::string& name) const
 
 uint16_t Channel::readNetUint16(const char* data) const
 {
+//    return (static_cast<uint8_t>(*data) << 8) + static_cast<uint8_t>(*(data + 1));
     return readNetUint16(reinterpret_cast<const uint8_t*>(data));
 }
 

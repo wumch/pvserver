@@ -66,8 +66,6 @@ public:
     void setEncKeyWithIv(const byte* _key, std::size_t keyLen,
         const byte* _iv, std::size_t ivLen)
     {
-        dumpBytes(_key, keyLen, "enc key");
-        dumpBytes(_iv, ivLen, "enc iv");
         encor.SetKeyWithIV(_key, keyLen, _iv, ivLen);
     }
 
@@ -81,20 +79,7 @@ public:
     void setDecKeyWithIv(const byte* _key, std::size_t keyLen,
         const byte* _iv, std::size_t ivLen)
     {
-        dumpBytes(_key, keyLen, "dec key");
-        dumpBytes(_iv, ivLen, "dec iv");
         decor.SetKeyWithIV(_key, keyLen, _iv, ivLen);
-    }
-
-    void dumpBytes(const byte* _data, int len, const std::string& name)
-    {
-        const char* data = reinterpret_cast<const char*>(_data);
-        CS_SAY(name);
-        for (int i = 0; i < len; ++i)
-        {
-            std::cout << (int)data[i] << ',';
-        }
-        std::cout << std::endl;
     }
 };
 

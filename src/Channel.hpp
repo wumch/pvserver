@@ -113,18 +113,6 @@ private:
     void continueReadDs(const char* offset, int bytesRemain);
 
     uint16_t readNetUint16(const char* data) const;
-
-    uint16_t readNetUint16(const uint8_t* data) const;
-
-    void dumpBytes(const char* data, int len, const std::string& name)
-    {
-        CS_SAY(name);
-        for (int i = 0; i < len; ++i)
-        {
-            std::cout << (int)data[i] << ',';
-        }
-        std::cout << std::endl;
-    }
 };
 
 }

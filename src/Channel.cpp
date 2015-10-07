@@ -320,13 +320,7 @@ int Channel::getIf(const std::string& name) const
 
 uint16_t Channel::readNetUint16(const char* data) const
 {
-//    return (static_cast<uint8_t>(*data) << 8) + static_cast<uint8_t>(*(data + 1));
-    return readNetUint16(reinterpret_cast<const uint8_t*>(data));
-}
-
-uint16_t Channel::readNetUint16(const uint8_t* data) const
-{
-    return (*data << 8) + *(data + 1);
+    return (static_cast<uint8_t>(*data) << 8) + static_cast<uint8_t>(*(data + 1));
 }
 
 }

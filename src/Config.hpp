@@ -51,13 +51,13 @@ public:
     bool reuseAddress;
     std::size_t maxConnections;
     std::size_t backlog;
-    bool dsTcpNodelay;
+    bool usTcpNodelay;
 
     std::size_t ioServiceNum;
     boost::asio::ip::address host;
     uint16_t port;
 
-    std::string interfaceNameTpl;
+    std::string ifaceName;
 
     uint8_t passwordLen;
 

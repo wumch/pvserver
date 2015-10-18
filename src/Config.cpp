@@ -158,7 +158,7 @@ void Config::load(boost::filesystem::path file)
     maxConnections = options["max-connections"].as<std::size_t>();
     backlog = options["listen-backlog"].as<std::size_t>();
 
-    dsTcpNodelay = options["tcp-nodelay"].as<bool>();
+    usTcpNodelay = options["tcp-nodelay"].as<bool>();
 
     dsRecvTimeout = toTimeval(options["downstream-receive-timeout"].as<std::time_t>());
     dsSendTimeout = toTimeval(options["downstream-send-timeout"].as<std::time_t>());
@@ -192,7 +192,7 @@ void Config::load(boost::filesystem::path file)
         _PECAR_OUT_CONFIG_PROPERTY(reuseAddress)
         _PECAR_OUT_CONFIG_PROPERTY(maxConnections)
         _PECAR_OUT_CONFIG_PROPERTY(backlog)
-        _PECAR_OUT_CONFIG_PROPERTY(dsTcpNodelay)
+        _PECAR_OUT_CONFIG_PROPERTY(usTcpNodelay)
         _PECAR_OUT_CONFIG_PROPERTY(ioServiceNum)
         _PECAR_OUT_CONFIG_PROPERTY(dsRecvTimeout.tv_sec)
         _PECAR_OUT_CONFIG_PROPERTY(dsSendTimeout.tv_sec)

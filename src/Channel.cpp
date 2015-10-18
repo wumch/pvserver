@@ -15,6 +15,7 @@ extern "C" {
 #include <cerrno>
 #include <algorithm>
 #include <fstream>
+#include <boost/bind.hpp>
 #include <crypto++/aes.h>
 #include "Aside.hpp"
 
@@ -31,6 +32,7 @@ namespace pecar
 
 void Channel::handshake()
 {
+    CS_SAY("handshake");
     asio::async_read(ds, __PECAR_BUFFER(dr),
         asio::transfer_exactly((CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE) * 2 + 2),
         boost::bind(&Channel::handleUserPassLen, shared_from_this(),
@@ -39,6 +41,7 @@ void Channel::handshake()
 
 void Channel::handleUserPassLen(const boost::system::error_code& err, int bytesRead)
 {
+    CS_DUMP(bytesRead);
     __PECAR_KICK_IF_ERR(err);
 
     const char* ptr = dr.data;
@@ -68,6 +71,8 @@ void Channel::handleUserPass(const boost::system::error_code& err, int bytesRead
     uint8_t res = Aside::instance()->auth(
         std::string(dr.data + config->userPassTotalLen, userLen),
         std::string(dr.data + config->userPassTotalLen + userLen, passLen), authority);
+    CS_DUMP(std::string(dr.data + config->userPassTotalLen, userLen));
+    CS_DUMP(std::string(dr.data + config->userPassTotalLen + userLen, passLen));
     if (res == Authenticater::CODE_OK)
     {
         CS_SAY("authed");
@@ -113,12 +118,14 @@ void Channel::handleDsRead(int bytesRead, int bytesLeft)
     {
         return uwTimer.async_wait(boost::bind(&Channel::handleDsRead, shared_from_this(), bytesRead, bytesLeft));
     }
-
+    CS_DUMP(bytesRead);
+    CS_DUMP(bytesLeft);
     crypto.decrypt(dr.data, bytesRead, uw.data + bytesLeft);
     const int totalBytes = bytesLeft + bytesRead;
     if (CS_BLIKELY(totalBytes >= ip_pack_len_end))
     {
         const int firstPackLen = readNetUint16(uw.data + 2);
+        CS_DUMP(firstPackLen);
         __PECAR_KICK_IF(firstPackLen < ip_pack_min_len);
 
         if (firstPackLen == totalBytes)
@@ -224,7 +231,7 @@ void Channel::handleUsRead(int bytesRead)
     {
         return dwTimer.async_wait(boost::bind(&Channel::handleUsRead, shared_from_this(), bytesRead));
     }
-
+    CS_DUMP(bytesRead);
     crypto.encrypt(ur.data, bytesRead, dw.data);
     ++dwPending;
     asio::async_write(ds, __PECAR_BUFFER(dw), asio::transfer_exactly(bytesRead),
@@ -237,12 +244,14 @@ void Channel::handleUsRead(int bytesRead)
 
 void Channel::handleDsWritten(const boost::system::error_code& err, int bytesWritten)
 {
+    CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
     --dwPending;
 }
 
 void Channel::handleUsWritten(const boost::system::error_code& err, int bytesWritten)
 {
+    CS_DUMP(bytesWritten);
     __PECAR_KICK_IF_ERR(err);
     --uwPending;
 }
@@ -308,7 +317,8 @@ int Channel::getIf(const std::string& name) const
         std::memcpy(ifr.ifr_name, name.data(), std::min(name.size(), sizeof(ifr.ifr_name)));
         CS_DUMP(std::string(name.data(), 0, std::min(name.size(), sizeof(ifr.ifr_name))));
 
-        if (ioctl(interface, TUNSETIFF, &ifr) < 0) {
+        if (ioctl(interface, TUNSETIFF, &ifr) < 0)
+        {
             CS_DIE("Cannot get TUN interface");
         }
     }

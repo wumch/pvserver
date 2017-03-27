@@ -53,7 +53,7 @@ void Channel::handleUserPassLen(const boost::system::error_code& err, int bytesR
     uint8_t userPassLen[2];
     crypto.decrypt(ptr + CryptoPP::AES::DEFAULT_KEYLENGTH + CryptoPP::AES::BLOCKSIZE, 2, userPassLen);
 
-    const int totalLen = userPassLen[0] + userPassLen[1];
+    const uint32_t totalLen = userPassLen[0] + userPassLen[1];
     if (CS_BLIKELY(0 < userPassLen[0] && 0 < userPassLen[1] && totalLen <= config->userPassTotalLen))
     {
         asio::async_read(ds, __PECAR_BUFFER(dr), asio::transfer_exactly(totalLen),
